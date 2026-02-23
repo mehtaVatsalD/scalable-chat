@@ -31,37 +31,36 @@ A high-performance, distributed chat messaging system featuring both a **Spring 
 
 ## 🛠️ Getting Started (Backend)
 
-### 1️⃣ Spin up the Backbone (Redis)
-Ensure a Redis instance is running. The fastest way is via Docker:
+### 1️⃣ Spin up the Clustered Infrastructure
+The project now uses a clustered setup with **3 Application Nodes** and an **HAProxy Load Balancer**.
 ```bash
-docker run -d --name redis-chat -p 6379:6379 redis:7.0-alpine
+docker-compose up -d --build
+```
+This will start:
+- `chat-load-balancer` (HAProxy on port 80)
+- `chat-app-1`, `chat-app-2`, `chat-app-3` (Internal nodes)
+- `scalable-chat-db` (Postgres)
+- `scalable-chat-redis` (Redis)
+
+### 2️⃣ Run Database Migrations
+Initialize the schema across the cluster:
+```bash
+./scripts/migrate.sh
 ```
 
-### 2️⃣ Run the Test Suite
-Verification is at the heart of Vibe Coding. Run the comprehensive integration suite to see the system in action:
+### 3️⃣ Run the Test Suite
+Verification still works by targeting individual nodes or the load balancer:
 ```bash
-mvn test
-```
-
-### 3️⃣ Start the Cluster
-Launch multiple instances to simulate a distributed environment:
-
-**Node 1 (Port 8080):**
-```bash
-mvn spring-boot:run
-```
-
-**Node 2 (Port 8081):**
-```bash
-mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=8081"
+./mvnw test
 ```
 
 ---
 
 ## 💻 Tech Stack
-- **Backend**: Spring Boot, WebSocket (STOMP), Spring Data Redis (Lettuce).
-- **Frontend**: (Incoming)
-- **Infrastructure**: Redis (Hashes & Pub/Sub).
+- **Backend**: Spring Boot, WebSocket (STOMP), Spring Data JPA, Spring Data Redis (Lettuce).
+- **Load Balancer**: HAProxy (Round-robin with Cookie-based Sticky Sessions).
+- **Database**: PostgreSQL (Persistence), Redis (Routing & Pub/Sub).
+- **Infrastructure**: Docker Compose (Clustered).
 - **Testing**: JUnit 5, Awaitility.
 
 ---
