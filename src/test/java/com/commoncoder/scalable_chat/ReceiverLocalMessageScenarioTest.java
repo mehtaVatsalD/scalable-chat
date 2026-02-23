@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import com.commoncoder.scalable_chat.entity.Chat;
 import com.commoncoder.scalable_chat.entity.ChatParticipant;
 import com.commoncoder.scalable_chat.enums.ChatType;
+import com.commoncoder.scalable_chat.enums.MessageStatus;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
@@ -168,11 +169,15 @@ public class ReceiverLocalMessageScenarioTest {
       sessionA.send("/app/message/new", request);
 
       // 6. Verify local delivery
-      await().atMost(Duration.ofSeconds(5)).until(() -> !userBMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> userBMessages.size() == 1);
       ChatMessageData received = userBMessages.poll();
       assertNotNull(received);
-      assertEquals("Hello User B, 1-to-1!", received.getContent());
+      assertNotNull(received.getMessageId());
+      assertNotNull(received.getTimestamp());
       assertEquals(chatId, received.getChatId());
+      assertEquals(USER_A, received.getSenderId());
+      assertEquals("Hello User B, 1-to-1!", received.getContent());
+      assertEquals(MessageStatus.PUBLISHED, received.getStatus());
 
       // 7. Verify NO Redis traffic
       Awaitility.await()
@@ -286,18 +291,27 @@ public class ReceiverLocalMessageScenarioTest {
       sessionA.send("/app/message/new", request);
 
       // 6. Verify local delivery to BOTH members
-      await().atMost(Duration.ofSeconds(5)).until(() -> !userBMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !userCMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> userBMessages.size() == 1);
+      await().atMost(Duration.ofSeconds(5)).until(() -> userCMessages.size() == 1);
 
       ChatMessageData receivedB = userBMessages.poll();
       ChatMessageData receivedC = userCMessages.poll();
 
       assertNotNull(receivedB);
-      assertNotNull(receivedC);
-      assertEquals("Hello Group members!", receivedB.getContent());
-      assertEquals("Hello Group members!", receivedC.getContent());
+      assertNotNull(receivedB.getMessageId());
+      assertNotNull(receivedB.getTimestamp());
       assertEquals(chatId, receivedB.getChatId());
+      assertEquals(USER_A, receivedB.getSenderId());
+      assertEquals("Hello Group members!", receivedB.getContent());
+      assertEquals(MessageStatus.PUBLISHED, receivedB.getStatus());
+
+      assertNotNull(receivedC);
+      assertNotNull(receivedC.getMessageId());
+      assertNotNull(receivedC.getTimestamp());
       assertEquals(chatId, receivedC.getChatId());
+      assertEquals(USER_A, receivedC.getSenderId());
+      assertEquals("Hello Group members!", receivedC.getContent());
+      assertEquals(MessageStatus.PUBLISHED, receivedC.getStatus());
 
       // 7. Verify NO Redis traffic
       Awaitility.await()

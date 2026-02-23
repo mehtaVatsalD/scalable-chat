@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import com.commoncoder.scalable_chat.entity.Chat;
 import com.commoncoder.scalable_chat.entity.ChatParticipant;
 import com.commoncoder.scalable_chat.enums.ChatType;
+import com.commoncoder.scalable_chat.enums.MessageStatus;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
@@ -180,13 +181,23 @@ public class ReceiverRemoteMessageScenarioTest {
       await().atMost(Duration.ofSeconds(5)).until(() -> capturedRedisMsg.get() != null);
       ClientDeliverableData<ChatMessageData> redisMsg = capturedRedisMsg.get();
       assertEquals(RECEIVER_B, redisMsg.getReceiverUserIds().get(0));
+      assertNotNull(redisMsg.getData().getMessageId());
+      assertNotNull(redisMsg.getData().getTimestamp());
+      assertEquals(chatId, redisMsg.getData().getChatId());
+      assertEquals(SENDER, redisMsg.getData().getSenderId());
       assertEquals("Hello across servers 1-to-1!", redisMsg.getData().getContent());
+      assertEquals(MessageStatus.PUBLISHED, redisMsg.getData().getStatus());
 
       // 7. Verify WebSocket Delivery
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverBMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> receiverBMessages.size() == 1);
       ChatMessageData receivedB = receiverBMessages.poll();
       assertNotNull(receivedB);
+      assertNotNull(receivedB.getMessageId());
+      assertNotNull(receivedB.getTimestamp());
+      assertEquals(chatId, receivedB.getChatId());
+      assertEquals(SENDER, receivedB.getSenderId());
       assertEquals("Hello across servers 1-to-1!", receivedB.getContent());
+      assertEquals(MessageStatus.PUBLISHED, receivedB.getStatus());
 
       pubSubConn.close();
     } finally {
@@ -309,19 +320,35 @@ public class ReceiverRemoteMessageScenarioTest {
       assertEquals(2, recipients.size());
       assert (recipients.contains(RECEIVER_B));
       assert (recipients.contains(RECEIVER_C));
+      assertNotNull(redisMsg.getData().getMessageId());
+      assertNotNull(redisMsg.getData().getTimestamp());
+      assertEquals(chatId, redisMsg.getData().getChatId());
+      assertEquals(SENDER, redisMsg.getData().getSenderId());
       assertEquals("Hello Group across servers!", redisMsg.getData().getContent());
+      assertEquals(MessageStatus.PUBLISHED, redisMsg.getData().getStatus());
 
       // 7. Verify WebSocket Delivery to BOTH
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverBMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverCMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> receiverBMessages.size() == 1);
+      await().atMost(Duration.ofSeconds(5)).until(() -> receiverCMessages.size() == 1);
 
       ChatMessageData finalMsgB = receiverBMessages.poll();
       ChatMessageData finalMsgC = receiverCMessages.poll();
 
       assertNotNull(finalMsgB);
-      assertNotNull(finalMsgC);
+      assertNotNull(finalMsgB.getMessageId());
+      assertNotNull(finalMsgB.getTimestamp());
+      assertEquals(chatId, finalMsgB.getChatId());
+      assertEquals(SENDER, finalMsgB.getSenderId());
       assertEquals("Hello Group across servers!", finalMsgB.getContent());
+      assertEquals(MessageStatus.PUBLISHED, finalMsgB.getStatus());
+
+      assertNotNull(finalMsgC);
+      assertNotNull(finalMsgC.getMessageId());
+      assertNotNull(finalMsgC.getTimestamp());
+      assertEquals(chatId, finalMsgC.getChatId());
+      assertEquals(SENDER, finalMsgC.getSenderId());
       assertEquals("Hello Group across servers!", finalMsgC.getContent());
+      assertEquals(MessageStatus.PUBLISHED, finalMsgC.getStatus());
 
       pubSubConn.close();
     } finally {

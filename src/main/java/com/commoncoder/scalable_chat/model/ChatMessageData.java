@@ -1,5 +1,6 @@
 package com.commoncoder.scalable_chat.model;
 
+import com.commoncoder.scalable_chat.enums.MessageStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -23,4 +24,5 @@ public class ChatMessageData {
   private String senderId;
   private String content;
   private long timestamp;
+  private MessageStatus status;
 }

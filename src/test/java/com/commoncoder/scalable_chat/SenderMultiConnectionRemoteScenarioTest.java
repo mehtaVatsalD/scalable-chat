@@ -2,10 +2,12 @@ package com.commoncoder.scalable_chat;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.commoncoder.scalable_chat.entity.Chat;
 import com.commoncoder.scalable_chat.entity.ChatParticipant;
 import com.commoncoder.scalable_chat.enums.ChatType;
+import com.commoncoder.scalable_chat.enums.MessageStatus;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.repository.ChatParticipantRepository;
@@ -111,14 +113,10 @@ public class SenderMultiConnectionRemoteScenarioTest {
     try {
       BlockingQueue<ChatMessageData> senderOnAMessages = new LinkedBlockingQueue<>();
       BlockingQueue<ChatMessageData> senderOnBMessages = new LinkedBlockingQueue<>();
-      BlockingQueue<ChatMessageData> receiverOnBMessages = new LinkedBlockingQueue<>();
 
       // SENDER connects to A and B
       StompSession sessionSenderA = TestStompUtils.connectStomp(wsUrlA, SENDER, senderOnAMessages);
       TestStompUtils.connectStomp(wsUrlB, SENDER, senderOnBMessages);
-
-      // RECEIVER connects to B
-      TestStompUtils.connectStomp(wsUrlB, RECEIVER_B, receiverOnBMessages);
 
       SendNewChatMessageRequest request =
           SendNewChatMessageRequest.builder()
@@ -129,14 +127,45 @@ public class SenderMultiConnectionRemoteScenarioTest {
       log.info("Sender (on Server A) sending message...");
       sessionSenderA.send("/app/message/new", request);
 
-      // Verify all
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnAMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnBMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverOnBMessages.isEmpty());
+      // 6. Verify all
+      // Sender on A should get 2
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderOnAMessages.size() == 2);
+      // Sender on B should also get 2 (relayed via Redis)
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderOnBMessages.size() == 2);
 
-      assertEquals("Hello 1-to-1 Cross-Server!", senderOnAMessages.poll().getContent());
-      assertEquals("Hello 1-to-1 Cross-Server!", senderOnBMessages.poll().getContent());
-      assertEquals("Hello 1-to-1 Cross-Server!", receiverOnBMessages.poll().getContent());
+      // Check Sender A
+      ChatMessageData aDraft = senderOnAMessages.poll();
+      assertNotNull(aDraft.getMessageId());
+      assertNotNull(aDraft.getTimestamp());
+      assertEquals(chatId, aDraft.getChatId());
+      assertEquals(SENDER, aDraft.getSenderId());
+      assertEquals("Hello 1-to-1 Cross-Server!", aDraft.getContent());
+      assertEquals(MessageStatus.DRAFT, aDraft.getStatus());
+
+      ChatMessageData aPublished = senderOnAMessages.poll();
+      assertNotNull(aPublished.getMessageId());
+      assertNotNull(aPublished.getTimestamp());
+      assertEquals(chatId, aPublished.getChatId());
+      assertEquals(SENDER, aPublished.getSenderId());
+      assertEquals("Hello 1-to-1 Cross-Server!", aPublished.getContent());
+      assertEquals(MessageStatus.PUBLISHED, aPublished.getStatus());
+
+      // Check Sender B
+      ChatMessageData bDraft = senderOnBMessages.poll();
+      assertNotNull(bDraft.getMessageId());
+      assertNotNull(bDraft.getTimestamp());
+      assertEquals(chatId, bDraft.getChatId());
+      assertEquals(SENDER, bDraft.getSenderId());
+      assertEquals("Hello 1-to-1 Cross-Server!", bDraft.getContent());
+      assertEquals(MessageStatus.DRAFT, bDraft.getStatus());
+
+      ChatMessageData bPublished = senderOnBMessages.poll();
+      assertNotNull(bPublished.getMessageId());
+      assertNotNull(bPublished.getTimestamp());
+      assertEquals(chatId, bPublished.getChatId());
+      assertEquals(SENDER, bPublished.getSenderId());
+      assertEquals("Hello 1-to-1 Cross-Server!", bPublished.getContent());
+      assertEquals(MessageStatus.PUBLISHED, bPublished.getStatus());
 
     } finally {
       serverA.close();
@@ -197,16 +226,10 @@ public class SenderMultiConnectionRemoteScenarioTest {
     try {
       BlockingQueue<ChatMessageData> senderOnAMessages = new LinkedBlockingQueue<>();
       BlockingQueue<ChatMessageData> senderOnBMessages = new LinkedBlockingQueue<>();
-      BlockingQueue<ChatMessageData> receiverBOnBMessages = new LinkedBlockingQueue<>();
-      BlockingQueue<ChatMessageData> receiverCOnBMessages = new LinkedBlockingQueue<>();
 
       // SENDER connects to A and B
       StompSession sessionSenderA = TestStompUtils.connectStomp(wsUrlA, SENDER, senderOnAMessages);
       TestStompUtils.connectStomp(wsUrlB, SENDER, senderOnBMessages);
-
-      // RECEIVERS connect to B
-      TestStompUtils.connectStomp(wsUrlB, RECEIVER_B, receiverBOnBMessages);
-      TestStompUtils.connectStomp(wsUrlB, RECEIVER_C, receiverCOnBMessages);
 
       SendNewChatMessageRequest request =
           SendNewChatMessageRequest.builder()
@@ -217,16 +240,43 @@ public class SenderMultiConnectionRemoteScenarioTest {
       log.info("Sender (on Server A) sending group message...");
       sessionSenderA.send("/app/message/new", request);
 
-      // Verify all
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnAMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnBMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverBOnBMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverCOnBMessages.isEmpty());
+      // 6. Verify all
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderOnAMessages.size() == 2);
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderOnBMessages.size() == 2);
 
-      assertEquals("Hello Group Cross-Server!", senderOnAMessages.poll().getContent());
-      assertEquals("Hello Group Cross-Server!", senderOnBMessages.poll().getContent());
-      assertEquals("Hello Group Cross-Server!", receiverBOnBMessages.poll().getContent());
-      assertEquals("Hello Group Cross-Server!", receiverCOnBMessages.poll().getContent());
+      // Check Sender A
+      ChatMessageData aDraft = senderOnAMessages.poll();
+      assertNotNull(aDraft.getMessageId());
+      assertNotNull(aDraft.getTimestamp());
+      assertEquals(chatId, aDraft.getChatId());
+      assertEquals(SENDER, aDraft.getSenderId());
+      assertEquals("Hello Group Cross-Server!", aDraft.getContent());
+      assertEquals(MessageStatus.DRAFT, aDraft.getStatus());
+
+      ChatMessageData aPublished = senderOnAMessages.poll();
+      assertNotNull(aPublished.getMessageId());
+      assertNotNull(aPublished.getTimestamp());
+      assertEquals(chatId, aPublished.getChatId());
+      assertEquals(SENDER, aPublished.getSenderId());
+      assertEquals("Hello Group Cross-Server!", aPublished.getContent());
+      assertEquals(MessageStatus.PUBLISHED, aPublished.getStatus());
+
+      // Check Sender B
+      ChatMessageData bDraft = senderOnBMessages.poll();
+      assertNotNull(bDraft.getMessageId());
+      assertNotNull(bDraft.getTimestamp());
+      assertEquals(chatId, bDraft.getChatId());
+      assertEquals(SENDER, bDraft.getSenderId());
+      assertEquals("Hello Group Cross-Server!", bDraft.getContent());
+      assertEquals(MessageStatus.DRAFT, bDraft.getStatus());
+
+      ChatMessageData bPublished = senderOnBMessages.poll();
+      assertNotNull(bPublished.getMessageId());
+      assertNotNull(bPublished.getTimestamp());
+      assertEquals(chatId, bPublished.getChatId());
+      assertEquals(SENDER, bPublished.getSenderId());
+      assertEquals("Hello Group Cross-Server!", bPublished.getContent());
+      assertEquals(MessageStatus.PUBLISHED, bPublished.getStatus());
 
     } finally {
       serverA.close();

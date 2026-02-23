@@ -2,6 +2,7 @@ package com.commoncoder.scalable_chat.service.impl;
 
 import com.commoncoder.scalable_chat.entity.ChatParticipant;
 import com.commoncoder.scalable_chat.entity.Message;
+import com.commoncoder.scalable_chat.enums.MessageStatus;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
@@ -43,26 +44,26 @@ public class DefaultMessageService implements MessageService {
     long messageId = idGeneratorService.nextId();
     long timestamp = System.currentTimeMillis();
 
-    // Build the message payload
-    ChatMessageData deliveryMessage =
+    // 1. Build the DRAFT message payload and send to sender itself
+    ChatMessageData draftMessage =
         ChatMessageData.builder()
             .messageId(messageId)
             .chatId(request.getChatId())
             .senderId(senderId)
             .content(request.getContent())
             .timestamp(timestamp)
+            .status(MessageStatus.DRAFT)
             .build();
 
-    // 1. Send to sender itself
-    ClientDeliverableData<ChatMessageData> senderDeliverable =
+    ClientDeliverableData<ChatMessageData> senderDraftDeliverable =
         ClientDeliverableData.<ChatMessageData>builder()
             .channelId("/queue/messages")
-            .data(deliveryMessage)
+            .data(draftMessage)
             .receiverUserIds(List.of(senderId))
             .build();
-    messageRouter.route(senderDeliverable);
+    messageRouter.route(senderDraftDeliverable);
 
-    // 2. Persist the message
+    // 2. Persist the message (always stored as PUBLISHED in DB in this flow)
     Message messageEntity =
         Message.builder()
             .id(messageId)
@@ -79,11 +80,14 @@ public class DefaultMessageService implements MessageService {
     List<String> participantUserIds =
         participants.stream().map(ChatParticipant::getUserId).collect(Collectors.toList());
 
-    // 4. Send to all participants
+    // 4. Build the PUBLISHED message payload and send to all participants
+    ChatMessageData publishedMessage =
+        draftMessage.toBuilder().status(MessageStatus.PUBLISHED).build();
+
     ClientDeliverableData<ChatMessageData> broadcastDeliverable =
         ClientDeliverableData.<ChatMessageData>builder()
             .channelId("/queue/messages")
-            .data(deliveryMessage)
+            .data(publishedMessage)
             .receiverUserIds(participantUserIds)
             .build();
 

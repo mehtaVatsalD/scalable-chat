@@ -2,10 +2,12 @@ package com.commoncoder.scalable_chat;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.commoncoder.scalable_chat.entity.Chat;
 import com.commoncoder.scalable_chat.entity.ChatParticipant;
 import com.commoncoder.scalable_chat.enums.ChatType;
+import com.commoncoder.scalable_chat.enums.MessageStatus;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.repository.ChatParticipantRepository;
@@ -106,11 +108,9 @@ public class SenderMultiConnectionLocalScenarioTest {
     try {
       BlockingQueue<ChatMessageData> senderConn1Messages = new LinkedBlockingQueue<>();
       BlockingQueue<ChatMessageData> senderConn2Messages = new LinkedBlockingQueue<>();
-      BlockingQueue<ChatMessageData> receiverMessages = new LinkedBlockingQueue<>();
 
       StompSession sessionA1 = TestStompUtils.connectStomp(wsUrl, SENDER, senderConn1Messages);
       TestStompUtils.connectStomp(wsUrl, SENDER, senderConn2Messages);
-      TestStompUtils.connectStomp(wsUrl, RECEIVER_B, receiverMessages);
 
       SendNewChatMessageRequest request =
           SendNewChatMessageRequest.builder()
@@ -121,14 +121,44 @@ public class SenderMultiConnectionLocalScenarioTest {
       log.info("Sender (Conn 1) sending message...");
       sessionA1.send("/app/message/new", request);
 
-      // Verify all
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderConn1Messages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderConn2Messages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverMessages.isEmpty());
+      // 5. Verify all
+      // Sender connections should receive TWO messages: DRAFT then PUBLISHED
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderConn1Messages.size() == 2);
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderConn2Messages.size() == 2);
 
-      assertEquals("Hello 1-to-1 from Conn 1!", senderConn1Messages.poll().getContent());
-      assertEquals("Hello 1-to-1 from Conn 1!", senderConn2Messages.poll().getContent());
-      assertEquals("Hello 1-to-1 from Conn 1!", receiverMessages.poll().getContent());
+      // Check Conn 1
+      ChatMessageData s1Draft = senderConn1Messages.poll();
+      assertNotNull(s1Draft.getMessageId());
+      assertNotNull(s1Draft.getTimestamp());
+      assertEquals(chatId, s1Draft.getChatId());
+      assertEquals(SENDER, s1Draft.getSenderId());
+      assertEquals("Hello 1-to-1 from Conn 1!", s1Draft.getContent());
+      assertEquals(MessageStatus.DRAFT, s1Draft.getStatus());
+
+      ChatMessageData s1Published = senderConn1Messages.poll();
+      assertNotNull(s1Published.getMessageId());
+      assertNotNull(s1Published.getTimestamp());
+      assertEquals(chatId, s1Published.getChatId());
+      assertEquals(SENDER, s1Published.getSenderId());
+      assertEquals("Hello 1-to-1 from Conn 1!", s1Published.getContent());
+      assertEquals(MessageStatus.PUBLISHED, s1Published.getStatus());
+
+      // Check Conn 2 (same user, different connection)
+      ChatMessageData s2Draft = senderConn2Messages.poll();
+      assertNotNull(s2Draft.getMessageId());
+      assertNotNull(s2Draft.getTimestamp());
+      assertEquals(chatId, s2Draft.getChatId());
+      assertEquals(SENDER, s2Draft.getSenderId());
+      assertEquals("Hello 1-to-1 from Conn 1!", s2Draft.getContent());
+      assertEquals(MessageStatus.DRAFT, s2Draft.getStatus());
+
+      ChatMessageData s2Published = senderConn2Messages.poll();
+      assertNotNull(s2Published.getMessageId());
+      assertNotNull(s2Published.getTimestamp());
+      assertEquals(chatId, s2Published.getChatId());
+      assertEquals(SENDER, s2Published.getSenderId());
+      assertEquals("Hello 1-to-1 from Conn 1!", s2Published.getContent());
+      assertEquals(MessageStatus.PUBLISHED, s2Published.getStatus());
 
     } finally {
       server.close();
@@ -183,13 +213,9 @@ public class SenderMultiConnectionLocalScenarioTest {
     try {
       BlockingQueue<ChatMessageData> senderConn1Messages = new LinkedBlockingQueue<>();
       BlockingQueue<ChatMessageData> senderConn2Messages = new LinkedBlockingQueue<>();
-      BlockingQueue<ChatMessageData> receiverBMessages = new LinkedBlockingQueue<>();
-      BlockingQueue<ChatMessageData> receiverCMessages = new LinkedBlockingQueue<>();
 
       StompSession sessionA1 = TestStompUtils.connectStomp(wsUrl, SENDER, senderConn1Messages);
       TestStompUtils.connectStomp(wsUrl, SENDER, senderConn2Messages);
-      TestStompUtils.connectStomp(wsUrl, RECEIVER_B, receiverBMessages);
-      TestStompUtils.connectStomp(wsUrl, RECEIVER_C, receiverCMessages);
 
       SendNewChatMessageRequest request =
           SendNewChatMessageRequest.builder()
@@ -200,16 +226,44 @@ public class SenderMultiConnectionLocalScenarioTest {
       log.info("Sender (Conn 1) sending group message...");
       sessionA1.send("/app/message/new", request);
 
-      // Verify all
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderConn1Messages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !senderConn2Messages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverBMessages.isEmpty());
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverCMessages.isEmpty());
+      // 5. Verify all
+      // Sender connections should receive TWO messages: DRAFT then PUBLISHED
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderConn1Messages.size() == 2);
+      await().atMost(Duration.ofSeconds(5)).until(() -> senderConn2Messages.size() == 2);
 
-      assertEquals("Hello Group from Conn 1!", senderConn1Messages.poll().getContent());
-      assertEquals("Hello Group from Conn 1!", senderConn2Messages.poll().getContent());
-      assertEquals("Hello Group from Conn 1!", receiverBMessages.poll().getContent());
-      assertEquals("Hello Group from Conn 1!", receiverCMessages.poll().getContent());
+      // Check Conn 1
+      ChatMessageData s1Draft = senderConn1Messages.poll();
+      assertNotNull(s1Draft.getMessageId());
+      assertNotNull(s1Draft.getTimestamp());
+      assertEquals(chatId, s1Draft.getChatId());
+      assertEquals(SENDER, s1Draft.getSenderId());
+      assertEquals("Hello Group from Conn 1!", s1Draft.getContent());
+      assertEquals(MessageStatus.DRAFT, s1Draft.getStatus());
+
+      ChatMessageData s1Published = senderConn1Messages.poll();
+      assertNotNull(s1Published.getMessageId());
+      assertNotNull(s1Published.getTimestamp());
+      assertEquals(chatId, s1Published.getChatId());
+      assertEquals(SENDER, s1Published.getSenderId());
+      assertEquals("Hello Group from Conn 1!", s1Published.getContent());
+      assertEquals(MessageStatus.PUBLISHED, s1Published.getStatus());
+
+      // Check Conn 2
+      ChatMessageData s2Draft = senderConn2Messages.poll();
+      assertNotNull(s2Draft.getMessageId());
+      assertNotNull(s2Draft.getTimestamp());
+      assertEquals(chatId, s2Draft.getChatId());
+      assertEquals(SENDER, s2Draft.getSenderId());
+      assertEquals("Hello Group from Conn 1!", s2Draft.getContent());
+      assertEquals(MessageStatus.DRAFT, s2Draft.getStatus());
+
+      ChatMessageData s2Published = senderConn2Messages.poll();
+      assertNotNull(s2Published.getMessageId());
+      assertNotNull(s2Published.getTimestamp());
+      assertEquals(chatId, s2Published.getChatId());
+      assertEquals(SENDER, s2Published.getSenderId());
+      assertEquals("Hello Group from Conn 1!", s2Published.getContent());
+      assertEquals(MessageStatus.PUBLISHED, s2Published.getStatus());
 
     } finally {
       server.close();
