@@ -1,8 +1,9 @@
 package com.commoncoder.scalable_chat.service.impl;
 
-import com.commoncoder.scalable_chat.model.InterNodeChatMessage;
+import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.service.RemoteMessageReceiver;
 import com.commoncoder.scalable_chat.service.RemoteSubscriptionService;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import org.slf4j.Logger;
@@ -38,9 +39,10 @@ public class RedisRemoteSubscriptionService implements RemoteSubscriptionService
           public void onMessage(Message message, byte[] pattern) {
             try {
               // Deserialize the JSON payload from Redis
-              InterNodeChatMessage chatMessage =
-                  objectMapper.readValue(message.getBody(), InterNodeChatMessage.class);
-              receiver.onMessage(chatMessage);
+              ClientDeliverableData<?> deliverable =
+                  objectMapper.readValue(
+                      message.getBody(), new TypeReference<ClientDeliverableData<?>>() {});
+              receiver.onMessage(deliverable);
             } catch (IOException e) {
               log.error("Failed to deserialize inter-node message from Redis", e);
             }

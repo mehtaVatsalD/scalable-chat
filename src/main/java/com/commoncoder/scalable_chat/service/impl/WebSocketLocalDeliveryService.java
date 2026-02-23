@@ -1,6 +1,6 @@
 package com.commoncoder.scalable_chat.service.impl;
 
-import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
+import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.service.LocalDeliveryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,8 +19,14 @@ public class WebSocketLocalDeliveryService implements LocalDeliveryService {
   }
 
   @Override
-  public void deliverLocal(String userId, ClientDeliveryMessage message) {
-    log.info("Delivering via WebSocket to user {}: {}", userId, message.getContent());
-    messagingTemplate.convertAndSendToUser(userId, "/queue/messages", message);
+  public <T> void deliverLocal(ClientDeliverableData<T> deliverable) {
+    deliverable
+        .getReceiverUserIds()
+        .forEach(
+            userId -> {
+              log.info("Delivering via WebSocket to user {}: {}", userId, deliverable.getData());
+              messagingTemplate.convertAndSendToUser(
+                  userId, deliverable.getChannelId(), deliverable.getData());
+            });
   }
 }

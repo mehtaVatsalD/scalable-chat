@@ -5,10 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.commoncoder.scalable_chat.model.ChatMessage;
+import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
-import com.commoncoder.scalable_chat.model.InterNodeChatMessage;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
@@ -100,7 +101,8 @@ public class RemoteMessageScenarioTest {
     try {
       // 2. Setup Redis Monitor on Server B's topic
       AtomicBoolean monitorWarmedUp = new AtomicBoolean(false);
-      AtomicReference<InterNodeChatMessage> capturedRedisMsg = new AtomicReference<>();
+      AtomicReference<ClientDeliverableData<ClientDeliveryMessage>> capturedRedisMsg =
+          new AtomicReference<>();
 
       StatefulRedisPubSubConnection<String, String> pubSubConn = nativeRedisClient.connectPubSub();
       pubSubConn.addListener(
@@ -108,13 +110,15 @@ public class RemoteMessageScenarioTest {
             @Override
             public void message(String channel, String message) {
               try {
-                InterNodeChatMessage msg =
-                    objectMapper.readValue(message, InterNodeChatMessage.class);
-                if ("WARMUP_SIGNAL".equals(msg.getContent())) {
+                if (message.contains("WARMUP_SIGNAL")) {
                   monitorWarmedUp.set(true);
                 } else {
                   log.info("REDIS MONITOR: Captured inter-node message: {}", message);
-                  capturedRedisMsg.set(msg);
+                  ClientDeliverableData<ClientDeliveryMessage> deliverable =
+                      objectMapper.readValue(
+                          message,
+                          new TypeReference<ClientDeliverableData<ClientDeliveryMessage>>() {});
+                  capturedRedisMsg.set(deliverable);
                 }
               } catch (Exception e) {
                 log.error("Failed to parse Redis message: " + message);
@@ -124,14 +128,13 @@ public class RemoteMessageScenarioTest {
       pubSubConn.sync().subscribe(serverBTopic);
 
       // Warm up monitor
-      InterNodeChatMessage warmup =
-          InterNodeChatMessage.builder()
-              .senderId("system")
-              .receiverId("system")
-              .content("WARMUP_SIGNAL")
-              .timestamp(0)
+      ClientDeliverableData<String> warmupMsg =
+          ClientDeliverableData.<String>builder()
+              .channelId("warmup")
+              .data("WARMUP_SIGNAL")
+              .receiverUserIds(Collections.singletonList("system"))
               .build();
-      String warmupJson = objectMapper.writeValueAsString(warmup);
+      String warmupJson = objectMapper.writeValueAsString(warmupMsg);
       await()
           .atMost(Duration.ofSeconds(10))
           .until(
@@ -159,10 +162,11 @@ public class RemoteMessageScenarioTest {
 
       // 5. Verify it went through Redis
       await().atMost(Duration.ofSeconds(5)).until(() -> capturedRedisMsg.get() != null);
-      InterNodeChatMessage redisMsg = capturedRedisMsg.get();
-      assertEquals(SENDER, redisMsg.getSenderId());
-      assertEquals(RECEIVER, redisMsg.getReceiverId());
-      assertEquals("Hello across servers!", redisMsg.getContent());
+      ClientDeliverableData<ClientDeliveryMessage> redisMsg = capturedRedisMsg.get();
+      assertNotNull(redisMsg.getData());
+      assertEquals(SENDER, redisMsg.getData().getSenderId());
+      assertEquals(RECEIVER, redisMsg.getReceiverUserIds().get(0));
+      assertEquals("Hello across servers!", redisMsg.getData().getContent());
       log.info("STEP 1 PASSED: Verified message was published to Redis topic of Server B.");
 
       // 6. Verify it was delivered to Receiver via Server B's WebSocket

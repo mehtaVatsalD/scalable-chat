@@ -1,6 +1,6 @@
 package com.commoncoder.scalable_chat.service.impl;
 
-import com.commoncoder.scalable_chat.model.InterNodeChatMessage;
+import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.service.RemoteDeliveryService;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -24,14 +24,14 @@ public class RedisRemoteDeliveryService implements RemoteDeliveryService {
   }
 
   @Override
-  public void deliverRemote(String targetServerId, InterNodeChatMessage message) {
+  public <T> void deliverRemote(String targetServerId, ClientDeliverableData<T> deliverable) {
     String topic = RedisKeyUtils.getServerTopicName(targetServerId);
     try {
-      String payload = objectMapper.writeValueAsString(message);
+      String payload = objectMapper.writeValueAsString(deliverable);
       redisTemplate.convertAndSend(topic, payload);
       log.info("Published to Redis topic {}: {}", topic, payload);
     } catch (JsonProcessingException e) {
-      log.error("Failed to serialize InterNodeChatMessage for remote delivery", e);
+      log.error("Failed to serialize ClientDeliverableData for remote delivery", e);
       throw new RuntimeException("Serialization failure", e);
     }
   }

@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.commoncoder.scalable_chat.model.ChatMessage;
+import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
-import com.commoncoder.scalable_chat.model.InterNodeChatMessage;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -113,12 +113,11 @@ public class LocalMessageScenarioTest {
       pubSubConn.sync().subscribe(serverTopic);
 
       // Warm up monitor
-      InterNodeChatMessage warmupMsg =
-          InterNodeChatMessage.builder()
-              .senderId("system")
-              .receiverId("system")
-              .content("WARMUP_SIGNAL")
-              .timestamp(0)
+      ClientDeliverableData<String> warmupMsg =
+          ClientDeliverableData.<String>builder()
+              .channelId("warmup")
+              .data("WARMUP_SIGNAL")
+              .receiverUserIds(Collections.singletonList("system"))
               .build();
       String warmupJson = objectMapper.writeValueAsString(warmupMsg);
 

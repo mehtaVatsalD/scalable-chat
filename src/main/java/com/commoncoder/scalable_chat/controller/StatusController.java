@@ -9,16 +9,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class StatusController {
 
-    private static final Logger log = LoggerFactory.getLogger(StatusController.class);
-    private final ServerMetadata serverMetadata;
+  private static final Logger log = LoggerFactory.getLogger(StatusController.class);
+  private final ServerMetadata serverMetadata;
 
-    public StatusController(ServerMetadata serverMetadata) {
-        this.serverMetadata = serverMetadata;
-    }
+  public StatusController(ServerMetadata serverMetadata) {
+    this.serverMetadata = serverMetadata;
+  }
 
-    @GetMapping("/api/status")
-    public ServerMetadata getStatus() {
-        log.info("Status check received on node: {}", serverMetadata.getServerId());
-        return serverMetadata;
-    }
+  @GetMapping("/api/status")
+  public ServerMetadata getStatus() {
+    log.info("Status check received on node: {}", serverMetadata.getServerId());
+    return serverMetadata;
+  }
 }

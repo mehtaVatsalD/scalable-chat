@@ -1,14 +1,15 @@
 package com.commoncoder.scalable_chat.service.impl;
 
-import com.commoncoder.scalable_chat.model.ChatMessage;
-import com.commoncoder.scalable_chat.model.InterNodeChatMessage;
+import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.service.LocalDeliveryService;
 import com.commoncoder.scalable_chat.service.MessageRouter;
 import com.commoncoder.scalable_chat.service.RemoteDeliveryService;
 import com.commoncoder.scalable_chat.service.RoutingTable;
 import com.commoncoder.scalable_chat.service.ServerLivenessService;
-import com.commoncoder.scalable_chat.util.MessageMapper;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,10 +47,15 @@ public class DefaultMessageRouter implements MessageRouter {
   }
 
   @Override
-  public void route(ChatMessage message) {
-    log.info("DefaultMessageRouter routing message from {}", message.getSenderId());
+  public void route(ClientDeliverableData<?> deliverable) {
+    log.info(
+        "DefaultMessageRouter routing message for {} receivers",
+        deliverable.getReceiverUserIds().size());
 
-    for (String receiverId : message.getReceiverIds()) {
+    // Group receivers by their connected servers
+    Map<String, List<String>> serverToReceivers = new HashMap<>();
+
+    for (String receiverId : deliverable.getReceiverUserIds()) {
       Map<String, Integer> targetServers = routingTable.getConnectedServers(receiverId);
 
       if (targetServers.isEmpty()) {
@@ -62,7 +68,9 @@ public class DefaultMessageRouter implements MessageRouter {
           .forEach(
               targetServerId -> {
                 if (livenessService.isServerAlive(targetServerId)) {
-                  deliverToNode(targetServerId, receiverId, message);
+                  serverToReceivers
+                      .computeIfAbsent(targetServerId, k -> new ArrayList<>())
+                      .add(receiverId);
                 } else {
                   log.warn(
                       "Detected stale routing entry for user {} on dead server {}. Cleaning up.",
@@ -73,16 +81,19 @@ public class DefaultMessageRouter implements MessageRouter {
                 }
               });
     }
-  }
 
-  private void deliverToNode(String targetServerId, String receiverId, ChatMessage message) {
-    if (targetServerId.equals(serverMetadata.getServerId())) {
-      // Use MessageMapper for clean DTO conversion
-      localDelivery.deliverLocal(receiverId, MessageMapper.toClientDelivery(message, receiverId));
-    } else {
-      // Use MessageMapper for Inter-Node DTO conversion
-      InterNodeChatMessage remoteMsg = MessageMapper.toInterNode(message, receiverId);
-      remoteDelivery.deliverRemote(targetServerId, remoteMsg);
-    }
+    // Deliver to each server
+    serverToReceivers.forEach(
+        (serverId, receivers) -> {
+          // Create a specific deliverable for this server's users
+          ClientDeliverableData<?> nodeDeliverable =
+              deliverable.toBuilder().receiverUserIds(receivers).build();
+
+          if (serverId.equals(serverMetadata.getServerId())) {
+            localDelivery.deliverLocal(nodeDeliverable);
+          } else {
+            remoteDelivery.deliverRemote(serverId, nodeDeliverable);
+          }
+        });
   }
 }

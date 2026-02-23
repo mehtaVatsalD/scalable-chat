@@ -1,9 +1,8 @@
 package com.commoncoder.scalable_chat.service.impl;
 
-import com.commoncoder.scalable_chat.model.InterNodeChatMessage;
+import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.service.LocalDeliveryService;
 import com.commoncoder.scalable_chat.service.RemoteMessageReceiver;
-import com.commoncoder.scalable_chat.util.MessageMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -23,13 +22,10 @@ public class DefaultRemoteMessageReceiver implements RemoteMessageReceiver {
   }
 
   @Override
-  public void onMessage(InterNodeChatMessage message) {
-    log.info(
-        "Received inter-node message for user {}: {}",
-        message.getReceiverId(),
-        message.getContent());
+  public void onMessage(ClientDeliverableData<?> deliverable) {
+    log.info("Received inter-node message for users {}", deliverable.getReceiverUserIds());
 
-    // Use MessageMapper to bridge inter-node message to local client format
-    localDelivery.deliverLocal(message.getReceiverId(), MessageMapper.toClientDelivery(message));
+    // Deliver to each local users
+    localDelivery.deliverLocal(deliverable);
   }
 }
