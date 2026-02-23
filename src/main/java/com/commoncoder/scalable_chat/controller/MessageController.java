@@ -4,6 +4,7 @@ import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.service.MessageRouter;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -37,14 +38,24 @@ public class MessageController {
               .timestamp(System.currentTimeMillis())
               .build();
 
-      ClientDeliverableData<ChatMessageData> deliverable =
+      // 1. Deliver to sender's own connections first
+      ClientDeliverableData<ChatMessageData> senderDeliverable =
+          ClientDeliverableData.<ChatMessageData>builder()
+              .channelId("/queue/messages")
+              .data(deliveryMessage)
+              .receiverUserIds(List.of(senderId))
+              .build();
+      messageRouter.route(senderDeliverable);
+
+      // 2. Deliver to receivers
+      ClientDeliverableData<ChatMessageData> receiverDeliverable =
           ClientDeliverableData.<ChatMessageData>builder()
               .channelId("/queue/messages") // Default chat channel
               .data(deliveryMessage)
               .receiverUserIds(request.getReceiverIds())
               .build();
 
-      messageRouter.route(deliverable);
+      messageRouter.route(receiverDeliverable);
     } else {
       log.error("Received message from unauthenticated session!");
     }

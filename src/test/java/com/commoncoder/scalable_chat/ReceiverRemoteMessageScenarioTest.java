@@ -9,17 +9,16 @@ import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
+import com.commoncoder.scalable_chat.util.TestStompUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
-import java.lang.reflect.Type;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -32,24 +31,17 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.messaging.converter.JacksonJsonMessageConverter;
-import org.springframework.messaging.simp.stomp.StompFrameHandler;
-import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
-import org.springframework.messaging.simp.stomp.StompSessionHandler;
-import org.springframework.messaging.simp.stomp.StompSessionHandlerAdapter;
-import org.springframework.web.socket.WebSocketHttpHeaders;
-import org.springframework.web.socket.client.standard.StandardWebSocketClient;
-import org.springframework.web.socket.messaging.WebSocketStompClient;
 
 /**
  * Integration test for Remote (Cross-Server) Message Passing. Verifies that when users are on
  * different servers: 1. The message is published to the target server's Redis topic. 2. The target
  * server receives it and delivers it to the end-user via WebSocket.
  */
-public class RemoteMessageScenarioTest {
+public class ReceiverRemoteMessageScenarioTest {
 
-  private static final Logger log = LoggerFactory.getLogger(RemoteMessageScenarioTest.class);
+  private static final Logger log =
+      LoggerFactory.getLogger(ReceiverRemoteMessageScenarioTest.class);
   private static final String SENDER = "userSender";
   private static final String RECEIVER = "userReceiver";
 
@@ -145,9 +137,10 @@ public class RemoteMessageScenarioTest {
 
       // 3. Connect Sender to Server A, Receiver to Server B
       BlockingQueue<ChatMessageData> receiverMessages = new LinkedBlockingQueue<>();
-      StompSession sessionSender = connectStomp(wsUrlA, SENDER, null);
+      StompSession sessionSender = TestStompUtils.connectStomp(wsUrlA, SENDER, null);
       @SuppressWarnings("unused")
-      StompSession ignoreSessionReceiver = connectStomp(wsUrlB, RECEIVER, receiverMessages);
+      StompSession ignoreSessionReceiver =
+          TestStompUtils.connectStomp(wsUrlB, RECEIVER, receiverMessages);
 
       // 4. Sender (Server A) sends message to Receiver (Server B)
       SendNewChatMessageRequest request =
@@ -184,41 +177,5 @@ public class RemoteMessageScenarioTest {
     }
 
     log.info("=== Remote Message Passing Flow: COMPLETE ===");
-  }
-
-  private StompSession connectStomp(
-      String url, String userId, BlockingQueue<ChatMessageData> messageQueue) throws Exception {
-    WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
-    stompClient.setMessageConverter(new JacksonJsonMessageConverter());
-
-    StompHeaders connectHeaders = new StompHeaders();
-    connectHeaders.add("userId", userId);
-
-    StompSessionHandler sessionHandler =
-        new StompSessionHandlerAdapter() {
-          @Override
-          public void afterConnected(StompSession session, StompHeaders connectedHeaders) {
-            if (messageQueue != null) {
-              session.subscribe(
-                  "/user/queue/messages",
-                  new StompFrameHandler() {
-                    @Override
-                    public Type getPayloadType(StompHeaders headers) {
-                      return ChatMessageData.class;
-                    }
-
-                    @Override
-                    public void handleFrame(StompHeaders headers, Object payload) {
-                      log.info("User {} received message: {}", userId, payload);
-                      messageQueue.add((ChatMessageData) payload);
-                    }
-                  });
-            }
-          }
-        };
-
-    return stompClient
-        .connectAsync(url, new WebSocketHttpHeaders(), connectHeaders, sessionHandler)
-        .get(10, TimeUnit.SECONDS);
   }
 }
