@@ -17,7 +17,7 @@ import lombok.ToString;
 @EqualsAndHashCode
 @AllArgsConstructor
 @NoArgsConstructor
-public class ClientDeliveryMessage {
+public class ChatMessageData {
   private String senderId;
   private String receiverId;
   private String content;

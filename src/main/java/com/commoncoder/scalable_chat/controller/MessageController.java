@@ -1,7 +1,7 @@
 package com.commoncoder.scalable_chat.controller;
 
+import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
-import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.service.MessageRouter;
 import org.slf4j.Logger;
@@ -30,15 +30,15 @@ public class MessageController {
       log.info("Received message from user {}: {}", senderId, request.getContent());
 
       // Wrap the message into the generic delivery format
-      ClientDeliveryMessage deliveryMessage =
-          ClientDeliveryMessage.builder()
+      ChatMessageData deliveryMessage =
+          ChatMessageData.builder()
               .senderId(senderId)
               .content(request.getContent())
               .timestamp(System.currentTimeMillis())
               .build();
 
-      ClientDeliverableData<ClientDeliveryMessage> deliverable =
-          ClientDeliverableData.<ClientDeliveryMessage>builder()
+      ClientDeliverableData<ChatMessageData> deliverable =
+          ClientDeliverableData.<ChatMessageData>builder()
               .channelId("/queue/messages") // Default chat channel
               .data(deliveryMessage)
               .receiverUserIds(request.getReceiverIds())

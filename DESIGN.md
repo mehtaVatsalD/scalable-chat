@@ -71,12 +71,12 @@ graph TD
 
 ### CUJ 3: Inter-Node (Remote) Messaging
 *Scenario: User 1 is on Server A, User 2 is on Server B.*
-1.  User 1 sends a message to User 2.
+1.  User 1 sends a `SendNewChatMessageRequest` to Server A.
 2.  `MessageRouter` looks up User 2 in Redis.
 3.  Redis returns `[Server B]`.
-4.  **Action**: Server A wraps the message in `InterNodeChatMessage` and publishes to `chat:topic:server:ServerB`.
+4.  **Action**: Server A wraps the message in `ClientDeliverableData<ChatMessageData>` and publishes to `chat:topic:server:ServerB`.
 5.  **Relay**: Server B receives the message via its Redis subscription.
-6.  **Action**: Server B delivers the message to User 2 via its local WebSocket task.
+6.  **Action**: Server B delivers the `ChatMessageData` to User 2 via its local WebSocket task.
 
 ### CUJ 4: Handling Server Failure (Lazy Cleanup)
 *Scenario: Server B crashes ungracefully.*

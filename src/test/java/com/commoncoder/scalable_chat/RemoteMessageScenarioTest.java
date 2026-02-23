@@ -4,8 +4,8 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
-import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
@@ -101,7 +101,7 @@ public class RemoteMessageScenarioTest {
     try {
       // 2. Setup Redis Monitor on Server B's topic
       AtomicBoolean monitorWarmedUp = new AtomicBoolean(false);
-      AtomicReference<ClientDeliverableData<ClientDeliveryMessage>> capturedRedisMsg =
+      AtomicReference<ClientDeliverableData<ChatMessageData>> capturedRedisMsg =
           new AtomicReference<>();
 
       StatefulRedisPubSubConnection<String, String> pubSubConn = nativeRedisClient.connectPubSub();
@@ -114,10 +114,9 @@ public class RemoteMessageScenarioTest {
                   monitorWarmedUp.set(true);
                 } else {
                   log.info("REDIS MONITOR: Captured inter-node message: {}", message);
-                  ClientDeliverableData<ClientDeliveryMessage> deliverable =
+                  ClientDeliverableData<ChatMessageData> deliverable =
                       objectMapper.readValue(
-                          message,
-                          new TypeReference<ClientDeliverableData<ClientDeliveryMessage>>() {});
+                          message, new TypeReference<ClientDeliverableData<ChatMessageData>>() {});
                   capturedRedisMsg.set(deliverable);
                 }
               } catch (Exception e) {
@@ -145,7 +144,7 @@ public class RemoteMessageScenarioTest {
       log.info("Redis Monitor on Server B topic is ready.");
 
       // 3. Connect Sender to Server A, Receiver to Server B
-      BlockingQueue<ClientDeliveryMessage> receiverMessages = new LinkedBlockingQueue<>();
+      BlockingQueue<ChatMessageData> receiverMessages = new LinkedBlockingQueue<>();
       StompSession sessionSender = connectStomp(wsUrlA, SENDER, null);
       @SuppressWarnings("unused")
       StompSession ignoreSessionReceiver = connectStomp(wsUrlB, RECEIVER, receiverMessages);
@@ -162,7 +161,7 @@ public class RemoteMessageScenarioTest {
 
       // 5. Verify it went through Redis
       await().atMost(Duration.ofSeconds(5)).until(() -> capturedRedisMsg.get() != null);
-      ClientDeliverableData<ClientDeliveryMessage> redisMsg = capturedRedisMsg.get();
+      ClientDeliverableData<ChatMessageData> redisMsg = capturedRedisMsg.get();
       assertNotNull(redisMsg.getData());
       assertEquals(SENDER, redisMsg.getData().getSenderId());
       assertEquals(RECEIVER, redisMsg.getReceiverUserIds().get(0));
@@ -171,7 +170,7 @@ public class RemoteMessageScenarioTest {
 
       // 6. Verify it was delivered to Receiver via Server B's WebSocket
       await().atMost(Duration.ofSeconds(5)).until(() -> !receiverMessages.isEmpty());
-      ClientDeliveryMessage finalMsg = receiverMessages.poll();
+      ChatMessageData finalMsg = receiverMessages.poll();
       assertNotNull(finalMsg);
       assertEquals(SENDER, finalMsg.getSenderId());
       assertEquals("Hello across servers!", finalMsg.getContent());
@@ -188,8 +187,7 @@ public class RemoteMessageScenarioTest {
   }
 
   private StompSession connectStomp(
-      String url, String userId, BlockingQueue<ClientDeliveryMessage> messageQueue)
-      throws Exception {
+      String url, String userId, BlockingQueue<ChatMessageData> messageQueue) throws Exception {
     WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
     stompClient.setMessageConverter(new JacksonJsonMessageConverter());
 
@@ -206,13 +204,13 @@ public class RemoteMessageScenarioTest {
                   new StompFrameHandler() {
                     @Override
                     public Type getPayloadType(StompHeaders headers) {
-                      return ClientDeliveryMessage.class;
+                      return ChatMessageData.class;
                     }
 
                     @Override
                     public void handleFrame(StompHeaders headers, Object payload) {
                       log.info("User {} received message: {}", userId, payload);
-                      messageQueue.add((ClientDeliveryMessage) payload);
+                      messageQueue.add((ChatMessageData) payload);
                     }
                   });
             }

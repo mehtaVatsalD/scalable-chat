@@ -4,8 +4,8 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
-import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
@@ -131,7 +131,7 @@ public class LocalMessageScenarioTest {
       log.info("Redis Monitor is active and warmed up.");
 
       // 3. Connect Clients
-      BlockingQueue<ClientDeliveryMessage> userBMessages = new LinkedBlockingQueue<>();
+      BlockingQueue<ChatMessageData> userBMessages = new LinkedBlockingQueue<>();
       StompSession sessionA = connectStomp(wsUrl, USER_A, null);
       @SuppressWarnings("unused")
       StompSession ignoreSessionB = connectStomp(wsUrl, USER_B, userBMessages);
@@ -148,7 +148,7 @@ public class LocalMessageScenarioTest {
 
       // 5. Verify local delivery
       await().atMost(Duration.ofSeconds(5)).until(() -> !userBMessages.isEmpty());
-      ClientDeliveryMessage received = userBMessages.poll();
+      ChatMessageData received = userBMessages.poll();
       assertNotNull(received);
       assertEquals("Hello User B, directly from A!", received.getContent());
       log.info("STEP 1 PASSED: User B received message locally.");
@@ -170,8 +170,7 @@ public class LocalMessageScenarioTest {
   }
 
   private StompSession connectStomp(
-      String url, String userId, BlockingQueue<ClientDeliveryMessage> messageQueue)
-      throws Exception {
+      String url, String userId, BlockingQueue<ChatMessageData> messageQueue) throws Exception {
     WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
     stompClient.setMessageConverter(new JacksonJsonMessageConverter());
 
@@ -188,13 +187,13 @@ public class LocalMessageScenarioTest {
                   new StompFrameHandler() {
                     @Override
                     public Type getPayloadType(StompHeaders headers) {
-                      return ClientDeliveryMessage.class;
+                      return ChatMessageData.class;
                     }
 
                     @Override
                     public void handleFrame(StompHeaders headers, Object payload) {
                       log.info("User {} received message: {}", userId, payload);
-                      messageQueue.add((ClientDeliveryMessage) payload);
+                      messageQueue.add((ChatMessageData) payload);
                     }
                   });
             }
