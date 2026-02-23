@@ -4,9 +4,9 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import com.commoncoder.scalable_chat.model.ChatMessage;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
+import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -151,14 +151,14 @@ public class RemoteMessageScenarioTest {
       StompSession ignoreSessionReceiver = connectStomp(wsUrlB, RECEIVER, receiverMessages);
 
       // 4. Sender (Server A) sends message to Receiver (Server B)
-      ChatMessage chatMsg =
-          ChatMessage.builder()
+      SendNewChatMessageRequest request =
+          SendNewChatMessageRequest.builder()
               .receiverIds(Collections.singletonList(RECEIVER))
               .content("Hello across servers!")
               .build();
 
       log.info("Sender (Server A) sending remote message to Receiver (Server B)...");
-      sessionSender.send("/app/message", chatMsg);
+      sessionSender.send("/app/message/new", request);
 
       // 5. Verify it went through Redis
       await().atMost(Duration.ofSeconds(5)).until(() -> capturedRedisMsg.get() != null);

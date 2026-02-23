@@ -1,8 +1,8 @@
 package com.commoncoder.scalable_chat.controller;
 
-import com.commoncoder.scalable_chat.model.ChatMessage;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
+import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.service.MessageRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,19 +21,19 @@ public class MessageController {
     this.messageRouter = messageRouter;
   }
 
-  @MessageMapping("/message")
-  public void handleChatMessage(
-      @Payload ChatMessage message, SimpMessageHeaderAccessor headerAccessor) {
+  @MessageMapping("/message/new")
+  public void handleSendNewChatMessage(
+      @Payload SendNewChatMessageRequest request, SimpMessageHeaderAccessor headerAccessor) {
     String senderId = (String) headerAccessor.getSessionAttributes().get("userId");
 
     if (senderId != null) {
-      log.info("Received message from user {}: {}", senderId, message.getContent());
+      log.info("Received message from user {}: {}", senderId, request.getContent());
 
       // Wrap the message into the generic delivery format
       ClientDeliveryMessage deliveryMessage =
           ClientDeliveryMessage.builder()
               .senderId(senderId)
-              .content(message.getContent())
+              .content(request.getContent())
               .timestamp(System.currentTimeMillis())
               .build();
 
@@ -41,7 +41,7 @@ public class MessageController {
           ClientDeliverableData.<ClientDeliveryMessage>builder()
               .channelId("/queue/messages") // Default chat channel
               .data(deliveryMessage)
-              .receiverUserIds(message.getReceiverIds())
+              .receiverUserIds(request.getReceiverIds())
               .build();
 
       messageRouter.route(deliverable);

@@ -4,9 +4,9 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-import com.commoncoder.scalable_chat.model.ChatMessage;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
+import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -137,14 +137,14 @@ public class LocalMessageScenarioTest {
       StompSession ignoreSessionB = connectStomp(wsUrl, USER_B, userBMessages);
 
       // 4. Send Message
-      ChatMessage msg =
-          ChatMessage.builder()
+      SendNewChatMessageRequest request =
+          SendNewChatMessageRequest.builder()
               .receiverIds(Collections.singletonList(USER_B))
               .content("Hello User B, directly from A!")
               .build();
 
       log.info("User A sending local message to User B...");
-      sessionA.send("/app/message", msg);
+      sessionA.send("/app/message/new", request);
 
       // 5. Verify local delivery
       await().atMost(Duration.ofSeconds(5)).until(() -> !userBMessages.isEmpty());
