@@ -1,14 +1,12 @@
 package com.commoncoder.scalable_chat.service;
 
+import com.commoncoder.scalable_chat.model.ServerMetadata;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Service;
-
-import com.commoncoder.scalable_chat.model.ServerMetadata;
-
-import jakarta.annotation.PreDestroy;
 
 /**
  * Service responsible for registering the node with the inter-node communication system on startup

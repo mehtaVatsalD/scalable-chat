@@ -16,6 +16,7 @@ import lombok.ToString;
 @NoArgsConstructor
 public class ServerMetadata {
   private String serverId;
+  private int nodeId;
 
   public String getTopicName() {
     return RedisKeyUtils.getServerTopicName(serverId);

@@ -1,13 +1,12 @@
 package com.commoncoder.scalable_chat.service.impl;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
-
 import com.commoncoder.scalable_chat.model.InterNodeChatMessage;
 import com.commoncoder.scalable_chat.service.LocalDeliveryService;
 import com.commoncoder.scalable_chat.service.RemoteMessageReceiver;
 import com.commoncoder.scalable_chat.util.MessageMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 /**
  * Concrete implementation of RemoteMessageReceiver that bridges inter-node messages to the locally

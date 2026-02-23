@@ -13,6 +13,9 @@ public class RedisKeyUtils {
   // Prefix for server-specific Pub/Sub topics
   private static final String SERVER_TOPIC_PREFIX = BASE_PREFIX + "topic:";
 
+  // Key for global node ID counter
+  public static final String NODE_ID_COUNTER_KEY = BASE_PREFIX + "node:id:counter";
+
   /** Builds the key for a server's registration/heartbeat. */
   public static String getServerInfoKey(String serverId) {
     return SERVER_INFO_PREFIX + serverId;

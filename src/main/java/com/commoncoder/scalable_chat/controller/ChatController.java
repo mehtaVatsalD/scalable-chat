@@ -1,14 +1,13 @@
 package com.commoncoder.scalable_chat.controller;
 
+import com.commoncoder.scalable_chat.model.ChatMessage;
+import com.commoncoder.scalable_chat.service.MessageRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
-
-import com.commoncoder.scalable_chat.model.ChatMessage;
-import com.commoncoder.scalable_chat.service.MessageRouter;
 
 @Controller
 public class ChatController {

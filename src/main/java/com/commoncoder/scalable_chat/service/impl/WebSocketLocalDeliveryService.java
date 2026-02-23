@@ -1,12 +1,11 @@
 package com.commoncoder.scalable_chat.service.impl;
 
+import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
+import com.commoncoder.scalable_chat.service.LocalDeliveryService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-
-import com.commoncoder.scalable_chat.model.ClientDeliveryMessage;
-import com.commoncoder.scalable_chat.service.LocalDeliveryService;
 
 @Service
 public class WebSocketLocalDeliveryService implements LocalDeliveryService {
