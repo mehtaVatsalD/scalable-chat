@@ -31,7 +31,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
 import org.springframework.messaging.simp.stomp.StompSession;
@@ -145,7 +145,7 @@ public class LocalMessageScenarioTest {
               .build();
 
       log.info("User A sending local message to User B...");
-      sessionA.send("/app/chat", msg);
+      sessionA.send("/app/message", msg);
 
       // 5. Verify local delivery
       await().atMost(Duration.ofSeconds(5)).until(() -> !userBMessages.isEmpty());
@@ -174,7 +174,7 @@ public class LocalMessageScenarioTest {
       String url, String userId, BlockingQueue<ClientDeliveryMessage> messageQueue)
       throws Exception {
     WebSocketStompClient stompClient = new WebSocketStompClient(new StandardWebSocketClient());
-    stompClient.setMessageConverter(new MappingJackson2MessageConverter());
+    stompClient.setMessageConverter(new JacksonJsonMessageConverter());
 
     StompHeaders connectHeaders = new StompHeaders();
     connectHeaders.add("userId", userId);

@@ -10,16 +10,16 @@ import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.stereotype.Controller;
 
 @Controller
-public class ChatController {
+public class MessageController {
 
-  private static final Logger log = LoggerFactory.getLogger(ChatController.class);
+  private static final Logger log = LoggerFactory.getLogger(MessageController.class);
   private final MessageRouter messageRouter;
 
-  public ChatController(MessageRouter messageRouter) {
+  public MessageController(MessageRouter messageRouter) {
     this.messageRouter = messageRouter;
   }
 
-  @MessageMapping("/chat")
+  @MessageMapping("/message")
   public void handleChatMessage(
       @Payload ChatMessage message, SimpMessageHeaderAccessor headerAccessor) {
     String senderId = (String) headerAccessor.getSessionAttributes().get("userId");

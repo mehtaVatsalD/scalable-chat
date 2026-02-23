@@ -10,7 +10,7 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.messaging.converter.MappingJackson2MessageConverter;
+import org.springframework.messaging.converter.JacksonJsonMessageConverter;
 import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompFrameHandler;
 import org.springframework.messaging.simp.stomp.StompHeaders;
@@ -45,7 +45,7 @@ public class ChatTestClient {
     SockJsClient sockJsClient = new SockJsClient(transports);
 
     WebSocketStompClient stompClient = new WebSocketStompClient(sockJsClient);
-    stompClient.setMessageConverter(new MappingJackson2MessageConverter());
+    stompClient.setMessageConverter(new JacksonJsonMessageConverter());
 
     StompHeaders connectHeaders = new StompHeaders();
     connectHeaders.add("userId", userId);
@@ -122,7 +122,7 @@ public class ChatTestClient {
               .timestamp(System.currentTimeMillis())
               .build();
 
-      session.send("/app/chat", msg);
+      session.send("/app/message", msg);
       log.info("Sent to {}: {}", target, text);
     }
 
