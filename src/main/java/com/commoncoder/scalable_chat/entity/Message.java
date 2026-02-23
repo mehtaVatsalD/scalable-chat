@@ -22,23 +22,22 @@ import lombok.Setter;
 @Builder
 public class Message {
 
-    @Id
-    private Long id;
+  @Id private Long id;
 
-    @Column(name = "chat_id", nullable = false)
-    private Long chatId;
+  @Column(name = "chat_id", nullable = false)
+  private Long chatId;
 
-    @Column(name = "sender_id", nullable = false)
-    private String senderId;
+  @Column(name = "sender_id", nullable = false)
+  private String senderId;
 
-    @Column(nullable = false, columnDefinition = "TEXT")
-    private String content;
+  @Column(nullable = false, columnDefinition = "TEXT")
+  private String content;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "message_type", nullable = false)
-    @Builder.Default
-    private MessageType messageType = MessageType.TEXT;
+  @Enumerated(EnumType.STRING)
+  @Column(name = "message_type", nullable = false)
+  @Builder.Default
+  private MessageType messageType = MessageType.TEXT;
 
-    @Column(nullable = false)
-    private Long timestamp;
+  @Column(nullable = false)
+  private Long timestamp;
 }

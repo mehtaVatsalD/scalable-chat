@@ -4,10 +4,15 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.commoncoder.scalable_chat.entity.Chat;
+import com.commoncoder.scalable_chat.entity.ChatParticipant;
+import com.commoncoder.scalable_chat.enums.ChatType;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
+import com.commoncoder.scalable_chat.repository.ChatParticipantRepository;
+import com.commoncoder.scalable_chat.repository.ChatRepository;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
 import com.commoncoder.scalable_chat.util.TestStompUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -16,7 +21,7 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 import java.time.Duration;
-import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,7 +48,8 @@ public class ReceiverRemoteMessageScenarioTest {
   private static final Logger log =
       LoggerFactory.getLogger(ReceiverRemoteMessageScenarioTest.class);
   private static final String SENDER = "userSender";
-  private static final String RECEIVER = "userReceiver";
+  private static final String RECEIVER_B = "userReceiverB";
+  private static final String RECEIVER_C = "userReceiverC";
 
   private LettuceConnectionFactory connectionFactory;
   private StringRedisTemplate redisTemplate;
@@ -73,14 +79,42 @@ public class ReceiverRemoteMessageScenarioTest {
   }
 
   @Test
-  void testRemoteMessageDeliveryFlow() throws Exception {
-    log.info("=== Remote Message Passing Flow (Cross-Server) ===");
+  void testOneToOneRemoteMessage() throws Exception {
+    log.info("=== 1-to-1 Remote Message Passing (Cross-Server) ===");
 
     // 1. Boot Server A and Server B
     ConfigurableApplicationContext serverA =
         SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
     ConfigurableApplicationContext serverB =
         SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+
+    // 2. Seed DB
+    ChatRepository chatRepo = serverA.getBean(ChatRepository.class);
+    ChatParticipantRepository participantRepo = serverA.getBean(ChatParticipantRepository.class);
+
+    long chatId = 201L;
+    chatRepo.save(
+        Chat.builder()
+            .id(chatId)
+            .type(ChatType.ONE_TO_ONE)
+            .createdAt(System.currentTimeMillis())
+            .lastActivity(System.currentTimeMillis())
+            .build());
+
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(11L)
+            .chatId(chatId)
+            .userId(SENDER)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(12L)
+            .chatId(chatId)
+            .userId(RECEIVER_B)
+            .joinedAt(System.currentTimeMillis())
+            .build());
 
     String serverBId = serverB.getBean(ServerMetadata.class).getServerId();
     int portA = Integer.parseInt(serverA.getEnvironment().getProperty("local.server.port"));
@@ -91,7 +125,7 @@ public class ReceiverRemoteMessageScenarioTest {
     String serverBTopic = RedisKeyUtils.getServerTopicName(serverBId);
 
     try {
-      // 2. Setup Redis Monitor on Server B's topic
+      // 3. Setup Redis Monitor on Server B
       AtomicBoolean monitorWarmedUp = new AtomicBoolean(false);
       AtomicReference<ClientDeliverableData<ChatMessageData>> capturedRedisMsg =
           new AtomicReference<>();
@@ -105,25 +139,20 @@ public class ReceiverRemoteMessageScenarioTest {
                 if (message.contains("WARMUP_SIGNAL")) {
                   monitorWarmedUp.set(true);
                 } else {
-                  log.info("REDIS MONITOR: Captured inter-node message: {}", message);
-                  ClientDeliverableData<ChatMessageData> deliverable =
-                      objectMapper.readValue(
-                          message, new TypeReference<ClientDeliverableData<ChatMessageData>>() {});
-                  capturedRedisMsg.set(deliverable);
+                  capturedRedisMsg.set(objectMapper.readValue(message, new TypeReference<>() {}));
                 }
               } catch (Exception e) {
-                log.error("Failed to parse Redis message: " + message);
               }
             }
           });
       pubSubConn.sync().subscribe(serverBTopic);
 
-      // Warm up monitor
+      // Warm up
       ClientDeliverableData<String> warmupMsg =
           ClientDeliverableData.<String>builder()
               .channelId("warmup")
               .data("WARMUP_SIGNAL")
-              .receiverUserIds(Collections.singletonList("system"))
+              .receiverUserIds(List.of("system"))
               .build();
       String warmupJson = objectMapper.writeValueAsString(warmupMsg);
       await()
@@ -133,49 +162,171 @@ public class ReceiverRemoteMessageScenarioTest {
                 redisTemplate.convertAndSend(serverBTopic, warmupJson);
                 return monitorWarmedUp.get();
               });
-      log.info("Redis Monitor on Server B topic is ready.");
 
-      // 3. Connect Sender to Server A, Receiver to Server B
-      BlockingQueue<ChatMessageData> receiverMessages = new LinkedBlockingQueue<>();
+      // 4. Connect Sender (A) and Receiver (B)
+      BlockingQueue<ChatMessageData> receiverBMessages = new LinkedBlockingQueue<>();
       StompSession sessionSender = TestStompUtils.connectStomp(wsUrlA, SENDER, null);
-      @SuppressWarnings("unused")
-      StompSession ignoreSessionReceiver =
-          TestStompUtils.connectStomp(wsUrlB, RECEIVER, receiverMessages);
+      TestStompUtils.connectStomp(wsUrlB, RECEIVER_B, receiverBMessages);
 
-      // 4. Sender (Server A) sends message to Receiver (Server B)
+      // 5. Send Message
       SendNewChatMessageRequest request =
           SendNewChatMessageRequest.builder()
-              .receiverIds(Collections.singletonList(RECEIVER))
-              .content("Hello across servers!")
+              .chatId(chatId)
+              .content("Hello across servers 1-to-1!")
               .build();
-
-      log.info("Sender (Server A) sending remote message to Receiver (Server B)...");
       sessionSender.send("/app/message/new", request);
 
-      // 5. Verify it went through Redis
+      // 6. Verify Redis Pub/Sub
       await().atMost(Duration.ofSeconds(5)).until(() -> capturedRedisMsg.get() != null);
       ClientDeliverableData<ChatMessageData> redisMsg = capturedRedisMsg.get();
-      assertNotNull(redisMsg.getData());
-      assertEquals(SENDER, redisMsg.getData().getSenderId());
-      assertEquals(RECEIVER, redisMsg.getReceiverUserIds().get(0));
-      assertEquals("Hello across servers!", redisMsg.getData().getContent());
-      log.info("STEP 1 PASSED: Verified message was published to Redis topic of Server B.");
+      assertEquals(RECEIVER_B, redisMsg.getReceiverUserIds().get(0));
+      assertEquals("Hello across servers 1-to-1!", redisMsg.getData().getContent());
 
-      // 6. Verify it was delivered to Receiver via Server B's WebSocket
-      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverMessages.isEmpty());
-      ChatMessageData finalMsg = receiverMessages.poll();
-      assertNotNull(finalMsg);
-      assertEquals(SENDER, finalMsg.getSenderId());
-      assertEquals("Hello across servers!", finalMsg.getContent());
-      log.info("STEP 2 PASSED: Receiver (on Server B) received the message via WebSocket.");
+      // 7. Verify WebSocket Delivery
+      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverBMessages.isEmpty());
+      ChatMessageData receivedB = receiverBMessages.poll();
+      assertNotNull(receivedB);
+      assertEquals("Hello across servers 1-to-1!", receivedB.getContent());
 
       pubSubConn.close();
-
     } finally {
       serverA.close();
       serverB.close();
     }
+  }
 
-    log.info("=== Remote Message Passing Flow: COMPLETE ===");
+  @Test
+  void testGroupRemoteMessage() throws Exception {
+    log.info("=== Group Remote Message Passing (Cross-Server) ===");
+
+    // 1. Boot Server A and Server B
+    ConfigurableApplicationContext serverA =
+        SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+    ConfigurableApplicationContext serverB =
+        SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+
+    // 2. Seed DB
+    ChatRepository chatRepo = serverA.getBean(ChatRepository.class);
+    ChatParticipantRepository participantRepo = serverA.getBean(ChatParticipantRepository.class);
+
+    long chatId = 202L;
+    chatRepo.save(
+        Chat.builder()
+            .id(chatId)
+            .type(ChatType.GROUP)
+            .createdAt(System.currentTimeMillis())
+            .lastActivity(System.currentTimeMillis())
+            .build());
+
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(21L)
+            .chatId(chatId)
+            .userId(SENDER)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(22L)
+            .chatId(chatId)
+            .userId(RECEIVER_B)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(23L)
+            .chatId(chatId)
+            .userId(RECEIVER_C)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+
+    String serverBId = serverB.getBean(ServerMetadata.class).getServerId();
+    int portA = Integer.parseInt(serverA.getEnvironment().getProperty("local.server.port"));
+    int portB = Integer.parseInt(serverB.getEnvironment().getProperty("local.server.port"));
+
+    String wsUrlA = "ws://localhost:" + portA + "/chat-ws-native";
+    String wsUrlB = "ws://localhost:" + portB + "/chat-ws-native";
+    String serverBTopic = RedisKeyUtils.getServerTopicName(serverBId);
+
+    try {
+      // 3. Setup Redis Monitor on Server B
+      AtomicBoolean monitorWarmedUp = new AtomicBoolean(false);
+      AtomicReference<ClientDeliverableData<ChatMessageData>> capturedRedisMsg =
+          new AtomicReference<>();
+
+      StatefulRedisPubSubConnection<String, String> pubSubConn = nativeRedisClient.connectPubSub();
+      pubSubConn.addListener(
+          new RedisPubSubAdapter<String, String>() {
+            @Override
+            public void message(String channel, String message) {
+              try {
+                if (message.contains("WARMUP_SIGNAL")) {
+                  monitorWarmedUp.set(true);
+                } else {
+                  capturedRedisMsg.set(objectMapper.readValue(message, new TypeReference<>() {}));
+                }
+              } catch (Exception e) {
+              }
+            }
+          });
+      pubSubConn.sync().subscribe(serverBTopic);
+
+      // Warm up
+      ClientDeliverableData<String> warmupMsg =
+          ClientDeliverableData.<String>builder()
+              .channelId("warmup")
+              .data("WARMUP_SIGNAL")
+              .receiverUserIds(List.of("system"))
+              .build();
+      String warmupJson = objectMapper.writeValueAsString(warmupMsg);
+      await()
+          .atMost(Duration.ofSeconds(10))
+          .until(
+              () -> {
+                redisTemplate.convertAndSend(serverBTopic, warmupJson);
+                return monitorWarmedUp.get();
+              });
+
+      // 4. Connect Sender (A) and Receivers (both on B)
+      BlockingQueue<ChatMessageData> receiverBMessages = new LinkedBlockingQueue<>();
+      BlockingQueue<ChatMessageData> receiverCMessages = new LinkedBlockingQueue<>();
+      StompSession sessionSender = TestStompUtils.connectStomp(wsUrlA, SENDER, null);
+      TestStompUtils.connectStomp(wsUrlB, RECEIVER_B, receiverBMessages);
+      TestStompUtils.connectStomp(wsUrlB, RECEIVER_C, receiverCMessages);
+
+      // 5. Send Message
+      SendNewChatMessageRequest request =
+          SendNewChatMessageRequest.builder()
+              .chatId(chatId)
+              .content("Hello Group across servers!")
+              .build();
+      sessionSender.send("/app/message/new", request);
+
+      // 6. Verify Redis Pub/Sub (should contain both B and C in receiverUserIds)
+      await().atMost(Duration.ofSeconds(5)).until(() -> capturedRedisMsg.get() != null);
+      ClientDeliverableData<ChatMessageData> redisMsg = capturedRedisMsg.get();
+      List<String> recipients = redisMsg.getReceiverUserIds();
+      assertEquals(2, recipients.size());
+      assert (recipients.contains(RECEIVER_B));
+      assert (recipients.contains(RECEIVER_C));
+      assertEquals("Hello Group across servers!", redisMsg.getData().getContent());
+
+      // 7. Verify WebSocket Delivery to BOTH
+      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverBMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverCMessages.isEmpty());
+
+      ChatMessageData finalMsgB = receiverBMessages.poll();
+      ChatMessageData finalMsgC = receiverCMessages.poll();
+
+      assertNotNull(finalMsgB);
+      assertNotNull(finalMsgC);
+      assertEquals("Hello Group across servers!", finalMsgB.getContent());
+      assertEquals("Hello Group across servers!", finalMsgC.getContent());
+
+      pubSubConn.close();
+    } finally {
+      serverA.close();
+      serverB.close();
+    }
   }
 }

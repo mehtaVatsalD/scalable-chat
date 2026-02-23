@@ -18,8 +18,9 @@ import lombok.ToString;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ChatMessageData {
+  private Long messageId;
+  private Long chatId;
   private String senderId;
-  private String receiverId;
   private String content;
   private long timestamp;
 }

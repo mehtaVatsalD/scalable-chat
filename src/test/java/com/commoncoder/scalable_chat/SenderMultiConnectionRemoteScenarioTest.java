@@ -3,12 +3,16 @@ package com.commoncoder.scalable_chat;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+import com.commoncoder.scalable_chat.entity.Chat;
+import com.commoncoder.scalable_chat.entity.ChatParticipant;
+import com.commoncoder.scalable_chat.enums.ChatType;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
+import com.commoncoder.scalable_chat.repository.ChatParticipantRepository;
+import com.commoncoder.scalable_chat.repository.ChatRepository;
 import com.commoncoder.scalable_chat.util.TestStompUtils;
 import io.lettuce.core.RedisClient;
 import java.time.Duration;
-import java.util.Collections;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.junit.jupiter.api.AfterEach;
@@ -32,7 +36,8 @@ public class SenderMultiConnectionRemoteScenarioTest {
   private static final Logger log =
       LoggerFactory.getLogger(SenderMultiConnectionRemoteScenarioTest.class);
   private static final String SENDER = "userSender";
-  private static final String RECEIVER = "userReceiver";
+  private static final String RECEIVER_B = "userReceiverB";
+  private static final String RECEIVER_C = "userReceiverC";
 
   private LettuceConnectionFactory connectionFactory;
   private StringRedisTemplate redisTemplate;
@@ -61,13 +66,41 @@ public class SenderMultiConnectionRemoteScenarioTest {
   }
 
   @Test
-  void testSenderReceivesOwnMessageOnRemoteConnections() throws Exception {
-    log.info("=== Sender Multi-Connection Remote Test (Cross-Server) ===");
+  void testOneToOneSenderRemoteMultiConnection() throws Exception {
+    log.info("=== 1-to-1 Sender Multi-Connection Remote Test (Cross-Server) ===");
 
     ConfigurableApplicationContext serverA =
         SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
     ConfigurableApplicationContext serverB =
         SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+
+    // Seed DB
+    ChatRepository chatRepoA = serverA.getBean(ChatRepository.class);
+    ChatParticipantRepository participantRepoA = serverA.getBean(ChatParticipantRepository.class);
+
+    long chatId = 401L;
+    chatRepoA.save(
+        Chat.builder()
+            .id(chatId)
+            .type(ChatType.ONE_TO_ONE)
+            .createdAt(System.currentTimeMillis())
+            .lastActivity(System.currentTimeMillis())
+            .build());
+
+    participantRepoA.save(
+        ChatParticipant.builder()
+            .id(41L)
+            .chatId(chatId)
+            .userId(SENDER)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepoA.save(
+        ChatParticipant.builder()
+            .id(42L)
+            .chatId(chatId)
+            .userId(RECEIVER_B)
+            .joinedAt(System.currentTimeMillis())
+            .build());
 
     int portA = Integer.parseInt(serverA.getEnvironment().getProperty("local.server.port"));
     int portB = Integer.parseInt(serverB.getEnvironment().getProperty("local.server.port"));
@@ -82,37 +115,118 @@ public class SenderMultiConnectionRemoteScenarioTest {
 
       // SENDER connects to A and B
       StompSession sessionSenderA = TestStompUtils.connectStomp(wsUrlA, SENDER, senderOnAMessages);
-      @SuppressWarnings("unused")
-      StompSession sessionSenderB = TestStompUtils.connectStomp(wsUrlB, SENDER, senderOnBMessages);
+      TestStompUtils.connectStomp(wsUrlB, SENDER, senderOnBMessages);
 
       // RECEIVER connects to B
-      @SuppressWarnings("unused")
-      StompSession sessionReceiverB =
-          TestStompUtils.connectStomp(wsUrlB, RECEIVER, receiverOnBMessages);
+      TestStompUtils.connectStomp(wsUrlB, RECEIVER_B, receiverOnBMessages);
 
       SendNewChatMessageRequest request =
           SendNewChatMessageRequest.builder()
-              .receiverIds(Collections.singletonList(RECEIVER))
-              .content("Hello from Server A to Server B!")
+              .chatId(chatId)
+              .content("Hello 1-to-1 Cross-Server!")
               .build();
 
       log.info("Sender (on Server A) sending message...");
       sessionSenderA.send("/app/message/new", request);
 
-      // 1. Verify Sender's Session on Server A (Local) receives it
+      // Verify all
       await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnAMessages.isEmpty());
-      assertEquals("Hello from Server A to Server B!", senderOnAMessages.poll().getContent());
-      log.info("SUCCESS: Sender session on Server A received message locally.");
-
-      // 2. Verify Sender's Session on Server B (Remote) receives it via Redis
       await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnBMessages.isEmpty());
-      assertEquals("Hello from Server A to Server B!", senderOnBMessages.poll().getContent());
-      log.info("SUCCESS: Sender session on Server B received message via Redis relay.");
-
-      // 3. Verify Receiver (on Server B) receives it via Redis
       await().atMost(Duration.ofSeconds(5)).until(() -> !receiverOnBMessages.isEmpty());
-      assertEquals("Hello from Server A to Server B!", receiverOnBMessages.poll().getContent());
-      log.info("SUCCESS: Receiver on Server B received message.");
+
+      assertEquals("Hello 1-to-1 Cross-Server!", senderOnAMessages.poll().getContent());
+      assertEquals("Hello 1-to-1 Cross-Server!", senderOnBMessages.poll().getContent());
+      assertEquals("Hello 1-to-1 Cross-Server!", receiverOnBMessages.poll().getContent());
+
+    } finally {
+      serverA.close();
+      serverB.close();
+    }
+  }
+
+  @Test
+  void testGroupSenderRemoteMultiConnection() throws Exception {
+    log.info("=== Group Sender Multi-Connection Remote Test (Cross-Server) ===");
+
+    ConfigurableApplicationContext serverA =
+        SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+    ConfigurableApplicationContext serverB =
+        SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+
+    // Seed DB
+    ChatRepository chatRepoA = serverA.getBean(ChatRepository.class);
+    ChatParticipantRepository participantRepoA = serverA.getBean(ChatParticipantRepository.class);
+
+    long chatId = 402L;
+    chatRepoA.save(
+        Chat.builder()
+            .id(chatId)
+            .type(ChatType.GROUP)
+            .createdAt(System.currentTimeMillis())
+            .lastActivity(System.currentTimeMillis())
+            .build());
+
+    participantRepoA.save(
+        ChatParticipant.builder()
+            .id(43L)
+            .chatId(chatId)
+            .userId(SENDER)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepoA.save(
+        ChatParticipant.builder()
+            .id(44L)
+            .chatId(chatId)
+            .userId(RECEIVER_B)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepoA.save(
+        ChatParticipant.builder()
+            .id(45L)
+            .chatId(chatId)
+            .userId(RECEIVER_C)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+
+    int portA = Integer.parseInt(serverA.getEnvironment().getProperty("local.server.port"));
+    int portB = Integer.parseInt(serverB.getEnvironment().getProperty("local.server.port"));
+
+    String wsUrlA = "ws://localhost:" + portA + "/chat-ws-native";
+    String wsUrlB = "ws://localhost:" + portB + "/chat-ws-native";
+
+    try {
+      BlockingQueue<ChatMessageData> senderOnAMessages = new LinkedBlockingQueue<>();
+      BlockingQueue<ChatMessageData> senderOnBMessages = new LinkedBlockingQueue<>();
+      BlockingQueue<ChatMessageData> receiverBOnBMessages = new LinkedBlockingQueue<>();
+      BlockingQueue<ChatMessageData> receiverCOnBMessages = new LinkedBlockingQueue<>();
+
+      // SENDER connects to A and B
+      StompSession sessionSenderA = TestStompUtils.connectStomp(wsUrlA, SENDER, senderOnAMessages);
+      TestStompUtils.connectStomp(wsUrlB, SENDER, senderOnBMessages);
+
+      // RECEIVERS connect to B
+      TestStompUtils.connectStomp(wsUrlB, RECEIVER_B, receiverBOnBMessages);
+      TestStompUtils.connectStomp(wsUrlB, RECEIVER_C, receiverCOnBMessages);
+
+      SendNewChatMessageRequest request =
+          SendNewChatMessageRequest.builder()
+              .chatId(chatId)
+              .content("Hello Group Cross-Server!")
+              .build();
+
+      log.info("Sender (on Server A) sending group message...");
+      sessionSenderA.send("/app/message/new", request);
+
+      // Verify all
+      await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnAMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> !senderOnBMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverBOnBMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> !receiverCOnBMessages.isEmpty());
+
+      assertEquals("Hello Group Cross-Server!", senderOnAMessages.poll().getContent());
+      assertEquals("Hello Group Cross-Server!", senderOnBMessages.poll().getContent());
+      assertEquals("Hello Group Cross-Server!", receiverBOnBMessages.poll().getContent());
+      assertEquals("Hello Group Cross-Server!", receiverCOnBMessages.poll().getContent());
 
     } finally {
       serverA.close();

@@ -22,18 +22,17 @@ import lombok.Setter;
 @Builder
 public class Chat {
 
-    @Id
-    private Long id;
+  @Id private Long id;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private ChatType type;
+  @Enumerated(EnumType.STRING)
+  @Column(nullable = false)
+  private ChatType type;
 
-    private String name;
+  private String name;
 
-    @Column(name = "created_at", nullable = false)
-    private Long createdAt;
+  @Column(name = "created_at", nullable = false)
+  private Long createdAt;
 
-    @Column(name = "last_activity", nullable = false)
-    private Long lastActivity;
+  @Column(name = "last_activity", nullable = false)
+  private Long lastActivity;
 }

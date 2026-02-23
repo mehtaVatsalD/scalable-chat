@@ -1,6 +1,5 @@
 package com.commoncoder.scalable_chat.model;
 
-import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.EqualsAndHashCode;
@@ -16,7 +15,6 @@ import lombok.ToString;
 @NoArgsConstructor
 public class SendNewChatMessageRequest {
   private String senderId;
-  private List<String> receiverIds;
+  private Long chatId;
   private String content;
-  private long timestamp;
 }

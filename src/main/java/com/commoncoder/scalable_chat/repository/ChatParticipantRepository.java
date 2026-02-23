@@ -8,5 +8,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ChatParticipantRepository extends JpaRepository<ChatParticipant, Long> {
 
-    List<ChatParticipant> findAllByChatId(Long chatId);
+  List<ChatParticipant> findAllByChatId(Long chatId);
 }

@@ -7,7 +7,9 @@ import com.commoncoder.scalable_chat.model.ServerMetadata;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.SpringApplication;
@@ -20,6 +22,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  * Plain JUnit test — no @SpringBootTest. This test is NOT itself a server. It connects to Redis
  * directly and spawns child Spring Boot contexts to simulate servers.
  */
+@Tag("advanced")
+@EnabledIfSystemProperty(named = "advanced", matches = "true")
 public class ServerLivenessScenarioTest {
 
   private static final Logger log = LoggerFactory.getLogger(ServerLivenessScenarioTest.class);

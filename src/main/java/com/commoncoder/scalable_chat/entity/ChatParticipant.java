@@ -12,9 +12,13 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "chat_participants", uniqueConstraints = {
-        @UniqueConstraint(columnNames = { "chat_id", "user_id" }, name = "uk_chat_user")
-})
+@Table(
+    name = "chat_participants",
+    uniqueConstraints = {
+      @UniqueConstraint(
+          columnNames = {"chat_id", "user_id"},
+          name = "uk_chat_user")
+    })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,19 +26,18 @@ import lombok.Setter;
 @Builder
 public class ChatParticipant {
 
-    @Id
-    private Long id;
+  @Id private Long id;
 
-    @Column(name = "chat_id", nullable = false)
-    private Long chatId;
+  @Column(name = "chat_id", nullable = false)
+  private Long chatId;
 
-    @Column(name = "user_id", nullable = false)
-    private String userId;
+  @Column(name = "user_id", nullable = false)
+  private String userId;
 
-    @Column(name = "joined_at", nullable = false)
-    private Long joinedAt;
+  @Column(name = "joined_at", nullable = false)
+  private Long joinedAt;
 
-    @Column(name = "last_read_message_id")
-    @Builder.Default
-    private Long lastReadMessageId = 0L;
+  @Column(name = "last_read_message_id")
+  @Builder.Default
+  private Long lastReadMessageId = 0L;
 }

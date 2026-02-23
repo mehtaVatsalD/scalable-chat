@@ -4,10 +4,15 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import com.commoncoder.scalable_chat.entity.Chat;
+import com.commoncoder.scalable_chat.entity.ChatParticipant;
+import com.commoncoder.scalable_chat.enums.ChatType;
 import com.commoncoder.scalable_chat.model.ChatMessageData;
 import com.commoncoder.scalable_chat.model.ClientDeliverableData;
 import com.commoncoder.scalable_chat.model.SendNewChatMessageRequest;
 import com.commoncoder.scalable_chat.model.ServerMetadata;
+import com.commoncoder.scalable_chat.repository.ChatParticipantRepository;
+import com.commoncoder.scalable_chat.repository.ChatRepository;
 import com.commoncoder.scalable_chat.util.RedisKeyUtils;
 import com.commoncoder.scalable_chat.util.TestStompUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,7 +20,7 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.pubsub.RedisPubSubAdapter;
 import io.lettuce.core.pubsub.StatefulRedisPubSubConnection;
 import java.time.Duration;
-import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -41,6 +46,7 @@ public class ReceiverLocalMessageScenarioTest {
   private static final Logger log = LoggerFactory.getLogger(ReceiverLocalMessageScenarioTest.class);
   private static final String USER_A = "userA";
   private static final String USER_B = "userB";
+  private static final String USER_C = "userC";
 
   private LettuceConnectionFactory connectionFactory;
   private StringRedisTemplate redisTemplate;
@@ -72,19 +78,48 @@ public class ReceiverLocalMessageScenarioTest {
   }
 
   @Test
-  void testLocalMessageDeliveryFlow() throws Exception {
-    log.info("=== Local Message Passing Flow ===");
+  void testOneToOneLocalMessage() throws Exception {
+    log.info("=== 1-to-1 Local Message Passing ===");
 
     // 1. Boot Server
     ConfigurableApplicationContext server =
         SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+
+    // 2. Seed DB with Chat and Participants
+    ChatRepository chatRepo = server.getBean(ChatRepository.class);
+    ChatParticipantRepository participantRepo = server.getBean(ChatParticipantRepository.class);
+
+    long chatId = 101L;
+    chatRepo.save(
+        Chat.builder()
+            .id(chatId)
+            .type(ChatType.ONE_TO_ONE)
+            .createdAt(System.currentTimeMillis())
+            .lastActivity(System.currentTimeMillis())
+            .build());
+
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(1L)
+            .chatId(chatId)
+            .userId(USER_A)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(2L)
+            .chatId(chatId)
+            .userId(USER_B)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+
     String serverId = server.getBean(ServerMetadata.class).getServerId();
     int port = Integer.parseInt(server.getEnvironment().getProperty("local.server.port"));
     String wsUrl = "ws://localhost:" + port + "/chat-ws-native";
     String serverTopic = RedisKeyUtils.getServerTopicName(serverId);
 
     try {
-      // 2. Setup Redis Monitor using native Lettuce connection
+      // 3. Setup Redis Monitor
       AtomicBoolean redisMessageReceived = new AtomicBoolean(false);
       AtomicBoolean monitorWarmedUp = new AtomicBoolean(false);
 
@@ -103,15 +138,14 @@ public class ReceiverLocalMessageScenarioTest {
           });
       pubSubConn.sync().subscribe(serverTopic);
 
-      // Warm up monitor
+      // Warm up
       ClientDeliverableData<String> warmupMsg =
           ClientDeliverableData.<String>builder()
               .channelId("warmup")
               .data("WARMUP_SIGNAL")
-              .receiverUserIds(Collections.singletonList("system"))
+              .receiverUserIds(List.of("system"))
               .build();
       String warmupJson = objectMapper.writeValueAsString(warmupMsg);
-
       await()
           .atMost(Duration.ofSeconds(10))
           .until(
@@ -119,44 +153,160 @@ public class ReceiverLocalMessageScenarioTest {
                 redisTemplate.convertAndSend(serverTopic, warmupJson);
                 return monitorWarmedUp.get();
               });
-      log.info("Redis Monitor is active and warmed up.");
 
-      // 3. Connect Clients
+      // 4. Connect Clients
       BlockingQueue<ChatMessageData> userBMessages = new LinkedBlockingQueue<>();
       StompSession sessionA = TestStompUtils.connectStomp(wsUrl, USER_A, null);
-      @SuppressWarnings("unused")
-      StompSession ignoreSessionB = TestStompUtils.connectStomp(wsUrl, USER_B, userBMessages);
+      TestStompUtils.connectStomp(wsUrl, USER_B, userBMessages);
 
-      // 4. Send Message
+      // 5. Send Message
       SendNewChatMessageRequest request =
           SendNewChatMessageRequest.builder()
-              .receiverIds(Collections.singletonList(USER_B))
-              .content("Hello User B, directly from A!")
+              .chatId(chatId)
+              .content("Hello User B, 1-to-1!")
               .build();
-
-      log.info("User A sending local message to User B...");
       sessionA.send("/app/message/new", request);
 
-      // 5. Verify local delivery
+      // 6. Verify local delivery
       await().atMost(Duration.ofSeconds(5)).until(() -> !userBMessages.isEmpty());
       ChatMessageData received = userBMessages.poll();
       assertNotNull(received);
-      assertEquals("Hello User B, directly from A!", received.getContent());
-      log.info("STEP 1 PASSED: User B received message locally.");
+      assertEquals("Hello User B, 1-to-1!", received.getContent());
+      assertEquals(chatId, received.getChatId());
 
-      // 6. Verify NO Redis traffic
+      // 7. Verify NO Redis traffic
       Awaitility.await()
           .during(Duration.ofMillis(1000))
           .atMost(Duration.ofMillis(2000))
           .until(() -> !redisMessageReceived.get());
-      log.info("STEP 2 PASSED: Verified NO message was sent via Redis Pub/Sub.");
-
       pubSubConn.close();
-
     } finally {
       server.close();
     }
+  }
 
-    log.info("=== Local Message Passing Flow: COMPLETE ===");
+  @Test
+  void testGroupLocalMessage() throws Exception {
+    log.info("=== Group Local Message Passing ===");
+
+    // 1. Boot Server
+    ConfigurableApplicationContext server =
+        SpringApplication.run(ScalableChatApplication.class, "--server.port=0");
+
+    // 2. Seed DB
+    ChatRepository chatRepo = server.getBean(ChatRepository.class);
+    ChatParticipantRepository participantRepo = server.getBean(ChatParticipantRepository.class);
+
+    long chatId = 102L;
+    chatRepo.save(
+        Chat.builder()
+            .id(chatId)
+            .type(ChatType.GROUP)
+            .createdAt(System.currentTimeMillis())
+            .lastActivity(System.currentTimeMillis())
+            .build());
+
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(3L)
+            .chatId(chatId)
+            .userId(USER_A)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(4L)
+            .chatId(chatId)
+            .userId(USER_B)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+    participantRepo.save(
+        ChatParticipant.builder()
+            .id(5L)
+            .chatId(chatId)
+            .userId(USER_C)
+            .joinedAt(System.currentTimeMillis())
+            .build());
+
+    String serverId = server.getBean(ServerMetadata.class).getServerId();
+    int port = Integer.parseInt(server.getEnvironment().getProperty("local.server.port"));
+    String wsUrl = "ws://localhost:" + port + "/chat-ws-native";
+    String serverTopic = RedisKeyUtils.getServerTopicName(serverId);
+
+    try {
+      // 3. Setup Redis Monitor
+      AtomicBoolean redisMessageReceived = new AtomicBoolean(false);
+      AtomicBoolean monitorWarmedUp = new AtomicBoolean(false);
+
+      StatefulRedisPubSubConnection<String, String> pubSubConn = nativeRedisClient.connectPubSub();
+      pubSubConn.addListener(
+          new RedisPubSubAdapter<String, String>() {
+            @Override
+            public void message(String channel, String message) {
+              if (message.contains("WARMUP_SIGNAL")) {
+                monitorWarmedUp.set(true);
+              } else {
+                log.warn("REDIS MONITOR: Unexpected message on {}: {}", channel, message);
+                redisMessageReceived.set(true);
+              }
+            }
+          });
+      pubSubConn.sync().subscribe(serverTopic);
+
+      // Warm up
+      ClientDeliverableData<String> warmupMsg =
+          ClientDeliverableData.<String>builder()
+              .channelId("warmup")
+              .data("WARMUP_SIGNAL")
+              .receiverUserIds(List.of("system"))
+              .build();
+      String warmupJson = objectMapper.writeValueAsString(warmupMsg);
+      await()
+          .atMost(Duration.ofSeconds(10))
+          .until(
+              () -> {
+                redisTemplate.convertAndSend(serverTopic, warmupJson);
+                return monitorWarmedUp.get();
+              });
+
+      // 4. Connect Clients
+      BlockingQueue<ChatMessageData> userBMessages = new LinkedBlockingQueue<>();
+      BlockingQueue<ChatMessageData> userCMessages = new LinkedBlockingQueue<>();
+
+      StompSession sessionA = TestStompUtils.connectStomp(wsUrl, USER_A, null);
+      TestStompUtils.connectStomp(wsUrl, USER_B, userBMessages);
+      TestStompUtils.connectStomp(wsUrl, USER_C, userCMessages);
+
+      // 5. Send Message
+      SendNewChatMessageRequest request =
+          SendNewChatMessageRequest.builder()
+              .chatId(chatId)
+              .content("Hello Group members!")
+              .build();
+      sessionA.send("/app/message/new", request);
+
+      // 6. Verify local delivery to BOTH members
+      await().atMost(Duration.ofSeconds(5)).until(() -> !userBMessages.isEmpty());
+      await().atMost(Duration.ofSeconds(5)).until(() -> !userCMessages.isEmpty());
+
+      ChatMessageData receivedB = userBMessages.poll();
+      ChatMessageData receivedC = userCMessages.poll();
+
+      assertNotNull(receivedB);
+      assertNotNull(receivedC);
+      assertEquals("Hello Group members!", receivedB.getContent());
+      assertEquals("Hello Group members!", receivedC.getContent());
+      assertEquals(chatId, receivedB.getChatId());
+      assertEquals(chatId, receivedC.getChatId());
+
+      // 7. Verify NO Redis traffic
+      Awaitility.await()
+          .during(Duration.ofMillis(1000))
+          .atMost(Duration.ofMillis(2000))
+          .until(() -> !redisMessageReceived.get());
+      pubSubConn.close();
+    } finally {
+      server.close();
+    }
   }
 }
